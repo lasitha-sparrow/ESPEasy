@@ -110,7 +110,7 @@ boolean NPlugin_001_send(String aDomain , String aTo, String aFrom, String aSub,
 }
 
 
-boolean NPlugin_001_MTA(WiFiClient client, String aStr, String aWaitForPattern)
+boolean NPlugin_001_MTA(WiFiClient& client, String aStr, const String &aWaitForPattern)
 {
 
   boolean myStatus = false;
@@ -122,9 +122,9 @@ boolean NPlugin_001_MTA(WiFiClient client, String aStr, String aWaitForPattern)
   yield();
 
   // Wait For Response
-  unsigned long ts = millis();
+  unsigned long timer = millis() + NPLUGIN_001_TIMEOUT;
   while (true) {
-    if ( ts + NPLUGIN_001_TIMEOUT < millis() ) {
+    if (timeOutReached(timer)) {
       myStatus = false;
       break;
     }

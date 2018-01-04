@@ -34,6 +34,10 @@ boolean CPlugin_001(byte function, struct EventStruct *event, String& string)
       {
         if (event->idx != 0)
         {
+          if (WiFi.status() != WL_CONNECTED) {
+            success = false;
+            break;
+          }
           ControllerSettingsStruct ControllerSettings;
           LoadControllerSettings(event->ControllerIndex, (byte*)&ControllerSettings, sizeof (ControllerSettings));
 
@@ -50,13 +54,12 @@ boolean CPlugin_001(byte function, struct EventStruct *event, String& string)
           }
 
           // boolean success = false;
-          IPAddress host(ControllerSettings.IP[0], ControllerSettings.IP[1], ControllerSettings.IP[2], ControllerSettings.IP[3]);
-          addLog(LOG_LEVEL_DEBUG, String(F("HTTP : connecting to "))+host.toString()+":"+ControllerSettings.Port);
+          addLog(LOG_LEVEL_DEBUG, String(F("HTTP : connecting to "))+ControllerSettings.getHostPortString());
 
 
           // Use WiFiClient class to create TCP connections
           WiFiClient client;
-          if (!client.connect(host, ControllerSettings.Port))
+          if (!ControllerSettings.connectToHost(client))
           {
             connectionFailures++;
 
@@ -95,12 +98,12 @@ boolean CPlugin_001(byte function, struct EventStruct *event, String& string)
               url += F(";");
               url += humStat(UserVar[event->BaseVarIndex + 1]);
               break;
-            case SENSOR_TYPE_TEMP_BARO:                      // temp + hum + hum_stat + bar + bar_fore, used for BMP085
+            case SENSOR_TYPE_TEMP_BARO:                      // temp + bar used for BMP085 and BMP280
               url += F("&svalue=");
               url += formatUserVar(event, 0);
-              url += F(";0;0;");
+              url += F(";");
               url += formatUserVar(event, 1);
-              url += F(";0");
+              url += F(";0;0;");
               break;
             case SENSOR_TYPE_TRIPLE:
               url += F("&svalue=");
@@ -172,14 +175,14 @@ boolean CPlugin_001(byte function, struct EventStruct *event, String& string)
           request += url;
           request += F(" HTTP/1.1\r\n");
           request += F("Host: ");
-          request += host.toString();
+          request += ControllerSettings.getHost();
           request += F("\r\n");
           request += authHeader;
           request += F("Connection: close\r\n\r\n");
           client.print(request);
 
           unsigned long timer = millis() + 200;
-          while (!client.available() && millis() < timer)
+          while (!client.available() && !timeOutReached(timer)) 
             yield();
 
           // Read all the lines of the reply from server and log them

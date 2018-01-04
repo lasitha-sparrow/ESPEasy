@@ -130,6 +130,10 @@ boolean CPlugin_002(byte function, struct EventStruct *event, String& string)
       {
         if (event->idx != 0)
         {
+          if (WiFi.status() != WL_CONNECTED) {
+            success = false;
+            break;
+          }
 
           ControllerSettingsStruct ControllerSettings;
           LoadControllerSettings(event->ControllerIndex, (byte*)&ControllerSettings, sizeof(ControllerSettings));
@@ -190,9 +194,8 @@ boolean CPlugin_002(byte function, struct EventStruct *event, String& string)
             case SENSOR_TYPE_TEMP_BARO:                      // temp + hum + hum_stat + bar + bar_fore, used for BMP085
               root[F("nvalue")] = 0;
               values  = formatUserVar(event, 0);
-              values += ";0;0;";
               values += formatUserVar(event, 1);
-              values += ";0";
+              values += ";0;0;";
               // values.toCharArray(str, 80);
               root[F("svalue")] =  values.c_str();
               // root[F("svalue")] =  str;

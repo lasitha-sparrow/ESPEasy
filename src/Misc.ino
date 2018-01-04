@@ -372,22 +372,54 @@ String getPinStateJSON(boolean search, byte plugin, byte index, String& log, uin
 
 /********************************************************************************************\
   Unsigned long Timer timeOut check
-  \*********************************************************************************************/
+\*********************************************************************************************/
 
-boolean timeOut(unsigned long timer)
+// Return the time difference as a signed value, taking into account the timers may overflow.
+// Returned timediff is between -24.9 days and +24.9 days.
+// Returned value is positive when "next" is after "prev"
+long timeDiff(unsigned long prev, unsigned long next)
 {
-  // This routine solves the 49 day bug without the need for separate start time and duration
-  //   that would need two 32 bit variables if duration is not static
-  // It limits the maximum delay to 24.9 days.
-
-  unsigned long now = millis();
-  //XXX: fix me, something fishy going on here, this << operator is in the wrong place or parenthesis are wrong
-  if (((now >= timer) && ((now - timer) < 1u << 31))  || ((timer >= now) && (timer - now > 1u << 31)))
-    return true;
-
-  return false;
+  long signed_diff = 0;
+  // To cast a value to a signed long, the difference may not exceed half the ULONG_MAX
+  const unsigned long half_max_unsigned_long = 2147483647u; // = 2^31 -1
+  if (next >= prev) {
+    const unsigned long diff = next - prev;
+    if (diff <= half_max_unsigned_long) {
+      // Normal situation, just return the difference.
+      // Difference is a positive value.
+      signed_diff = static_cast<long>(diff);
+    } else {
+      // prev has overflow, return a negative difference value
+      signed_diff = static_cast<long>((ULONG_MAX - next) + prev + 1u);
+      signed_diff = -1 * signed_diff;
+    }
+  } else {
+    // next < prev
+    const unsigned long diff = prev - next;
+    if (diff <= half_max_unsigned_long) {
+      // Normal situation, return a negative difference value
+      signed_diff = static_cast<long>(diff);
+      signed_diff = -1 * signed_diff;
+    } else {
+      // next has overflow, return a positive difference value
+      signed_diff = static_cast<long>((ULONG_MAX - prev) + next + 1u);
+    }
+  }
+  return signed_diff;
 }
 
+// Compute the number of milliSeconds passed since timestamp given.
+// N.B. value can be negative if the timestamp has not yet been reached.
+long timePassedSince(unsigned long timestamp) {
+  return timeDiff(timestamp, millis());
+}
+
+// Check if a certain timeout has been reached.
+boolean timeOutReached(unsigned long timer)
+{
+  const long passed = timePassedSince(timer);
+  return passed >= 0;
+}
 
 /********************************************************************************************\
   Status LED
@@ -421,7 +453,7 @@ void statusLED(boolean traffic)
 
     if (WiFi.status() == WL_CONNECTED)
     {
-      long int delta=millis()-gnLastUpdate;
+      long int delta = timePassedSince(gnLastUpdate);
       if (delta>0 || delta<0 )
       {
         nStatusValue -= STATUS_PWM_NORMALFADE; //ramp down slowly
@@ -465,7 +497,7 @@ void statusLED(boolean traffic)
 void delayBackground(unsigned long delay)
 {
   unsigned long timer = millis() + delay;
-  while (millis() < timer)
+  while (!timeOutReached(timer))
     backgroundtasks();
 }
 
@@ -1060,6 +1092,11 @@ void ResetFactory(void)
   strcpy_P(SecuritySettings.WifiKey, PSTR(DEFAULT_KEY));
   strcpy_P(SecuritySettings.WifiAPKey, PSTR(DEFAULT_AP_KEY));
   SecuritySettings.Password[0] = 0;
+  // TD-er Reset access control
+  str2ip((char*)DEFAULT_IPRANGE_LOW, SecuritySettings.AllowedIPrangeLow);
+  str2ip((char*)DEFAULT_IPRANGE_HIGH, SecuritySettings.AllowedIPrangeHigh);
+  SecuritySettings.IPblockLevel = DEFAULT_IP_BLOCK_LEVEL;
+
   Settings.Delay           = DEFAULT_DELAY;
   Settings.Pin_i2c_sda     = 4;
   Settings.Pin_i2c_scl     = 5;
@@ -1225,6 +1262,7 @@ void addLog(byte loglevel, const char *line)
 
   }
 
+#ifdef FEATURE_SD
   if (loglevel <= Settings.SDLogLevel)
   {
     File logFile = SD.open("log.dat", FILE_WRITE);
@@ -1232,6 +1270,7 @@ void addLog(byte loglevel, const char *line)
       logFile.println(line);
     logFile.close();
   }
+#endif
 }
 
 
@@ -1253,7 +1292,7 @@ void delayedReboot(int rebootDelay)
    #endif
    #if defined(ESP32)
      ESP.restart();
-   #endif  
+   #endif
 }
 
 
@@ -1634,6 +1673,23 @@ boolean matchClockEvent(unsigned long clockEvent, unsigned long clockSet)
   Parse string template
   \*********************************************************************************************/
 
+// Call this by first declaring a char array of size 20, like:
+//  char strIP[20];
+//  formatIP(ip, strIP);
+void formatIP(const IPAddress& ip, char (&strIP)[20]) {
+  sprintf_P(strIP, PSTR("%u.%u.%u.%u"), ip[0], ip[1], ip[2], ip[3]);
+}
+
+String formatIP(const IPAddress& ip) {
+  char strIP[20];
+  formatIP(ip, strIP);
+  return String(strIP);
+}
+
+void formatMAC(const uint8_t* mac, char (&strMAC)[20]) {
+  sprintf_P(strMAC, PSTR("%02X:%02X:%02X:%02X:%02X:%02X"), mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
 String parseTemplate(String &tmpString, byte lineSize)
 {
   String newString = "";
@@ -1647,6 +1703,7 @@ String parseTemplate(String &tmpString, byte lineSize)
   {
     byte count = 0;
     byte currentTaskIndex = ExtraTaskSettings.TaskIndex;
+
     while (leftBracketIndex >= 0 && count < 10 - 1)
     {
       newString += tmpString.substring(0, leftBracketIndex);
@@ -1668,42 +1725,45 @@ String parseTemplate(String &tmpString, byte lineSize)
         }
         for (byte y = 0; y < TASKS_MAX; y++)
         {
-          LoadTaskSettings(y);
-          if (ExtraTaskSettings.TaskDeviceName[0] != 0)
+          if (Settings.TaskDeviceEnabled[y])
           {
-            if (deviceName.equalsIgnoreCase(ExtraTaskSettings.TaskDeviceName))
+            LoadTaskSettings(y);
+            if (ExtraTaskSettings.TaskDeviceName[0] != 0)
             {
-              boolean match = false;
-              for (byte z = 0; z < VARS_PER_TASK; z++)
-                if (valueName.equalsIgnoreCase(ExtraTaskSettings.TaskDeviceValueNames[z]))
-                {
-                  // here we know the task and value, so find the uservar
-                  match = true;
-                  String value = "";
-                  byte DeviceIndex = getDeviceIndex(Settings.TaskDeviceNumber[y]);
-                  if (Device[DeviceIndex].VType == SENSOR_TYPE_LONG)
-                    value = (unsigned long)UserVar[y * VARS_PER_TASK + z] + ((unsigned long)UserVar[y * VARS_PER_TASK + z + 1] << 16);
-                  else
-                    value = toString(UserVar[y * VARS_PER_TASK + z], ExtraTaskSettings.TaskDeviceValueDecimals[z]);
-
-                  if (valueFormat == "R")
-                  {
-                    int filler = lineSize - newString.length() - value.length() - tmpString.length() ;
-                    for (byte f = 0; f < filler; f++)
-                      newString += " ";
-                  }
-                  newString += String(value);
-                  break;
-                }
-              if (!match) // try if this is a get config request
+              if (deviceName.equalsIgnoreCase(ExtraTaskSettings.TaskDeviceName))
               {
-                struct EventStruct TempEvent;
-                TempEvent.TaskIndex = y;
-                String tmpName = valueName;
-                if (PluginCall(PLUGIN_GET_CONFIG, &TempEvent, tmpName))
-                  newString += tmpName;
+                boolean match = false;
+                for (byte z = 0; z < VARS_PER_TASK; z++)
+                  if (valueName.equalsIgnoreCase(ExtraTaskSettings.TaskDeviceValueNames[z]))
+                  {
+                    // here we know the task and value, so find the uservar
+                    match = true;
+                    String value = "";
+                    byte DeviceIndex = getDeviceIndex(Settings.TaskDeviceNumber[y]);
+                    if (Device[DeviceIndex].VType == SENSOR_TYPE_LONG)
+                      value = (unsigned long)UserVar[y * VARS_PER_TASK + z] + ((unsigned long)UserVar[y * VARS_PER_TASK + z + 1] << 16);
+                    else
+                      value = toString(UserVar[y * VARS_PER_TASK + z], ExtraTaskSettings.TaskDeviceValueDecimals[z]);
+
+                    if (valueFormat == "R")
+                    {
+                      int filler = lineSize - newString.length() - value.length() - tmpString.length() ;
+                      for (byte f = 0; f < filler; f++)
+                        newString += " ";
+                    }
+                    newString += String(value);
+                    break;
+                  }
+                if (!match) // try if this is a get config request
+                {
+                  struct EventStruct TempEvent;
+                  TempEvent.TaskIndex = y;
+                  String tmpName = valueName;
+                  if (PluginCall(PLUGIN_GET_CONFIG, &TempEvent, tmpName))
+                    newString += tmpName;
+                }
+                break;
               }
-              break;
             }
           }
         }
@@ -1712,7 +1772,9 @@ String parseTemplate(String &tmpString, byte lineSize)
       count++;
     }
     newString += tmpString;
-    LoadTaskSettings(currentTaskIndex);
+
+    if (currentTaskIndex!=255)
+      LoadTaskSettings(currentTaskIndex);
   }
 
   // replace other system variables like %sysname%, %systime%, %ip%
@@ -1734,11 +1796,12 @@ String parseTemplate(String &tmpString, byte lineSize)
   newString.replace(F("%vcc%"), String(vcc));
 #endif
 
-  IPAddress ip = WiFi.localIP();
-  char strIP[20];
-  sprintf_P(strIP, PSTR("%u.%u.%u.%u"), ip[0], ip[1], ip[2], ip[3]);
-  newString.replace(F("%ip%"), strIP);
-
+  const IPAddress ip = WiFi.localIP();
+  newString.replace(F("%ip%"), formatIP(ip));
+  newString.replace(F("%ip1%"), String(ip[0]));
+  newString.replace(F("%ip2%"), String(ip[1]));
+  newString.replace(F("%ip3%"), String(ip[2]));
+  newString.replace(F("%ip4%"), String(ip[3]));
   newString.replace("%sysload%", String(100 - (100 * loopCounterLast / loopCounterMax)));
 
   // padding spaces
@@ -2108,12 +2171,12 @@ void setTime(unsigned long t) {
 
 unsigned long now() {
   // calculate number of seconds passed since last call to now()
-  while (millis() - prevMillis >= 1000) {
-    // millis() and prevMillis are both unsigned ints thus the subtraction will always be the absolute value of the difference
-    sysTime++;
-    prevMillis += 1000;
-  }
+  const long msec_passed = timePassedSince(prevMillis);
+  const long seconds_passed = msec_passed / 1000;
+  sysTime += seconds_passed;
+  prevMillis += seconds_passed * 1000;
   if (nextSyncTime <= sysTime) {
+    // nextSyncTime & sysTime are in seconds
     unsigned long  t = getNtpTime();
     if (t != 0) {
       if (Settings.DST)
@@ -2197,6 +2260,9 @@ void checkTime()
 
 unsigned long getNtpTime()
 {
+  if (WiFi.status() != WL_CONNECTED) {
+    return 0;
+  }
   WiFiUDP udp;
   udp.begin(123);
   for (byte x = 1; x < 4; x++)
@@ -2216,10 +2282,8 @@ unsigned long getNtpTime()
     else
       WiFi.hostByName(ntpServerName, timeServerIP);
 
-    char host[20];
-    sprintf_P(host, PSTR("%u.%u.%u.%u"), timeServerIP[0], timeServerIP[1], timeServerIP[2], timeServerIP[3]);
     log = F("NTP  : NTP send to ");
-    log += host;
+    log += formatIP(timeServerIP);
     addLog(LOG_LEVEL_DEBUG_MORE, log);
 
     while (udp.parsePacket() > 0) ; // discard any previously received packets
@@ -2238,7 +2302,7 @@ unsigned long getNtpTime()
     udp.endPacket();
 
     uint32_t beginWait = millis();
-    while (millis() - beginWait < 1000) {
+    while (!timeOutReached(beginWait + 1000)) {
       int size = udp.parsePacket();
       if (size >= NTP_PACKET_SIZE) {
         udp.read(packetBuffer, NTP_PACKET_SIZE);  // read packet into the buffer
@@ -2249,7 +2313,7 @@ unsigned long getNtpTime()
         secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
         secsSince1900 |= (unsigned long)packetBuffer[43];
         log = F("NTP  : NTP replied: ");
-        log += millis() - beginWait;
+        log += timePassedSince(beginWait);
         log += F(" mSec");
         addLog(LOG_LEVEL_DEBUG_MORE, log);
         return secsSince1900 - 2208988800UL + Settings.TimeZone * SECS_PER_MIN;
@@ -2289,7 +2353,7 @@ void rulesProcessing(String& event)
   }
 
   log = F("EVENT: Processing time:");
-  log += millis() - timer;
+  log += timePassedSince(timer);
   log += F(" milliSeconds");
   addLog(LOG_LEVEL_DEBUG, log);
 
@@ -2650,7 +2714,7 @@ void rulesTimers()
   {
     if (RulesTimer[x] != 0L) // timer active?
     {
-      if (RulesTimer[x] <= millis()) // timer finished?
+      if (timeOutReached(RulesTimer[x])) // timer finished?
       {
         RulesTimer[x] = 0L; // turn off this timer
         String event = F("Rules#Timer=");
@@ -2719,11 +2783,13 @@ void SendValueLogger(byte TaskIndex)
 
   addLog(LOG_LEVEL_DEBUG, logger);
 
+#ifdef FEATURE_SD
   String filename = F("VALUES.CSV");
   File logFile = SD.open(filename, FILE_WRITE);
   if (logFile)
     logFile.print(logger);
   logFile.close();
+#endif
 }
 
 
@@ -2756,10 +2822,10 @@ void tone(uint8_t _pin, unsigned int frequency, unsigned long duration) {
 /********************************************************************************************\
   Play RTTTL string on specified pin
   \*********************************************************************************************/
-void play_rtttl(uint8_t _pin, char *p )
+void play_rtttl(uint8_t _pin, const char *p )
 {
   #define OCTAVE_OFFSET 0
-  // Absolutely no error checking in here
+  // FIXME: Absolutely no error checking in here
 
   int notes[] = { 0,
     262, 277, 294, 311, 330, 349, 370, 392, 415, 440, 466, 494,
@@ -2943,7 +3009,7 @@ void ArduinoOTAInit()
       #endif
       #if defined(ESP32)
         ESP.restart();
-      #endif      
+      #endif
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
 
@@ -2964,7 +3030,7 @@ void ArduinoOTAInit()
       #endif
       #if defined(ESP32)
         ESP.restart();
-      #endif      
+      #endif
   });
   ArduinoOTA.begin();
 
