@@ -2,7 +2,7 @@
 //#################################### Plugin 016: Input IR #############################################
 //#######################################################################################################
 
-
+#ifdef PLUGIN_UNDEFINED
 #ifdef PLUGIN_BUILD_NORMAL
 
 #include <IRremoteESP8266.h>
@@ -92,4 +92,5 @@ boolean Plugin_016(byte function, struct EventStruct *event, String& string)
   return success;
 }
 
+#endif
 #endif

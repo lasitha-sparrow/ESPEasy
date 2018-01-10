@@ -44,7 +44,7 @@
 // Electronics:
 // Use a power-FET or an ULN2003 to switch on the bells coil with 12 or 24 volts
 
-
+#ifdef PLUGIN_UNDEFINED
 #ifdef PLUGIN_BUILD_TESTING
 
 //#include <*.h>   - no external lib required
@@ -500,4 +500,5 @@ byte Plugin_055_ReadChime(const String& name, String& tokens)
   return tokens.length();
 }
 
+#endif
 #endif
