@@ -3803,8 +3803,8 @@ void handle_download()
 {
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
-  TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd")); 
+//  TXBuffer.startStream();
+//  sendHeadandTail(F("TmplStd")); 
 
 
   fs::File dataFile = SPIFFS.open(F(FILE_CONFIG), "r");
