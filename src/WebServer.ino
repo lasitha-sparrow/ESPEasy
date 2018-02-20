@@ -12,26 +12,26 @@ void sendContentBlocking(String& data);
 void sendHeaderBlocking(bool json);
 
 class StreamingBuffer{
-private: 
-  
-public: 
-  uint32_t initialRam; 
+private:
+
+public:
+  uint32_t initialRam;
   uint32_t beforeTXRam;
-  uint32_t duringTXRam; 
+  uint32_t duringTXRam;
   uint32_t finalRam;
   uint32_t maxCoreUsage;
   uint32_t maxServerUsage;
-  
 
 
-  String buf; 
+
+  String buf;
   unsigned int sentBytes;
-  StreamingBuffer(void) {     
-    buf = "";  
+  StreamingBuffer(void) {
+    buf = "";
     buf.reserve(BufferSize+100);
-    initialRam=0; 
+    initialRam=0;
     beforeTXRam=0;
-    duringTXRam=0; 
+    duringTXRam=0;
     finalRam=0;
     maxCoreUsage=0;
     maxServerUsage=0;
@@ -45,23 +45,23 @@ public:
   StreamingBuffer operator+= (int a)                    { this->buf+=String(a);  checkFull();  return *this;  }
   StreamingBuffer operator+= (uint32_t a)               { this->buf+=String(a);  checkFull();  return *this;  }
   StreamingBuffer operator+= (const StreamingBuffer& a) { this->buf+=a.buf;      checkFull(); return *this;   }
-  StreamingBuffer operator+= (const String& a)          { 
-    if ((      (this->buf.length() + a.length()) >BufferSize)&&(this->buf.length()>100 )) 
-      sendContentBlocking(this->buf); 
-      this->buf+=a ;      
+  StreamingBuffer operator+= (const String& a)          {
+    if ((      (this->buf.length() + a.length()) >BufferSize)&&(this->buf.length()>100 ))
+      sendContentBlocking(this->buf);
+      this->buf+=a ;
       checkFull();
-      return *this;  
+      return *this;
     }
   StreamingBuffer operator+ (const StreamingBuffer& a)  { this->buf = this->buf+a.buf;      checkFull(); return *this;  }
   StreamingBuffer operator+ (const String& a)           { this->buf = this->buf+a;          checkFull(); return *this;  }
-  
+
   void checkFull(void){
     if (this->buf.length()>BufferSize) {
     trackTotalMem();
-    sendContentBlocking(this->buf); 
+    sendContentBlocking(this->buf);
     }
   }
-  
+
   void startStream(bool json=false){
     maxCoreUsage=maxServerUsage=0;
     beforeTXRam= ESP.getFreeHeap();
@@ -70,32 +70,32 @@ public:
     buf ="";
     sendHeaderBlocking(json);
   }
-  
+
 void trackTotalMem()
 {
     beforeTXRam = ESP.getFreeHeap();
     if( (initialRam-beforeTXRam)  > maxServerUsage)
-      maxServerUsage=initialRam-beforeTXRam ; 
+      maxServerUsage=initialRam-beforeTXRam ;
  }
 
 void trackCoreMem()
 {
     duringTXRam = ESP.getFreeHeap();
     if( (initialRam-duringTXRam)  > maxCoreUsage)
-      maxCoreUsage=(initialRam-duringTXRam) ; 
+      maxCoreUsage=(initialRam-duringTXRam) ;
 }
   void endStream(void){
- 
-   if (buf.length() >0) sendContentBlocking(buf); 
-    buf =""; 
-    sendContentBlocking(buf); 
+
+   if (buf.length() >0) sendContentBlocking(buf);
+    buf ="";
+    sendContentBlocking(buf);
 
     finalRam= ESP.getFreeHeap();
     String log = String("Ram usage: Webserver only: ")+ maxServerUsage +" including Core: "+ maxCoreUsage;
     addLog(LOG_LEVEL_DEBUG, log);
   }
 
-}TXBuffer; 
+}TXBuffer;
 
 
 void sendContentBlocking(String& data){
@@ -116,13 +116,13 @@ void sendContentBlocking(String& data){
           uint32_t beginWait = millis();
           WebServer.sendContent(data);
           while ((ESP.getFreeHeap() < freeBeforeSend) &&  !timeOutReached(beginWait + 1000)) {
-            if(ESP.getFreeHeap()<TXBuffer.duringTXRam) TXBuffer.duringTXRam=ESP.getFreeHeap();; 
+            if(ESP.getFreeHeap()<TXBuffer.duringTXRam) TXBuffer.duringTXRam=ESP.getFreeHeap();;
             TXBuffer.trackCoreMem();
             checkRAM(F("duringDataTX"));
             delay(1);
-          } 
+          }
      #endif
-  
+
       TXBuffer.sentBytes+=data.length();
       data="";
 }
@@ -156,19 +156,19 @@ void sendContentBlocking(String& data){
      }
     #endif
  }
- 
- 
+
+
 
 
 void sendHeadandTail(const String& tmplName, boolean Tail=false)
 {
-  String pageTemplate=""; 
+  String pageTemplate="";
   int indexStart, indexEnd;
   String  varName; //, varValue;
   String fileName = tmplName;
   fileName += F(".htm");
   fs::File f = SPIFFS.open(fileName, "r+");
- 
+
   if (f)
   {
     pageTemplate.reserve(f.size());
@@ -184,13 +184,13 @@ void sendHeadandTail(const String& tmplName, boolean Tail=false)
     //web activity timer
   lastWeb = millis();
 
- 
- 
+
+
   if (Tail) {
     pageTemplate = pageTemplate.substring( 11+pageTemplate.indexOf("{{content}}")); // advance beyond content key
-    TXBuffer+=pageTemplate; 
+    TXBuffer+=pageTemplate;
   } else
-     
+
 
   while ((indexStart = pageTemplate.indexOf("{{")) >= 0)
   {
@@ -201,12 +201,12 @@ void sendHeadandTail(const String& tmplName, boolean Tail=false)
      varName = pageTemplate.substring(2, indexEnd);
      pageTemplate = pageTemplate.substring(indexEnd + 2);
      varName.toLowerCase();
-     
+
      if (varName == F("content")) {  //is var == page content?
            break;        // send first part of result only
       } else if (varName == F("error")) {
        String errors(getErrorNotifications());
-       if (errors.length() > 0) 
+       if (errors.length() > 0)
           TXBuffer+=(errors);
       } else {
          getWebPageTemplateVar(varName);
@@ -216,7 +216,7 @@ void sendHeadandTail(const String& tmplName, boolean Tail=false)
     else   {//no closing "}}"
       pageTemplate = pageTemplate.substring(2);   //eat "{{"
    }
-  }  
+  }
 
   if (shouldReboot)
   {
@@ -259,9 +259,9 @@ void sendHeadandTail(const String& tmplName, boolean Tail=false)
 
       "</script>"
     );
-    
+
   }
- 
+
 }
 
 
@@ -398,9 +398,9 @@ static const char pgDefaultCSS[] PROGMEM = {
 
 //if there is an error-string, add it to the html code with correct formatting
 void  addHtmlError( String error){
-  String t; 
+  String t;
    addHtmlError(t,  error);
-  TXBuffer+=t; 
+  TXBuffer+=t;
 }
 void addHtmlError(String & str, String error)
 {
@@ -462,7 +462,7 @@ void WebServerInit()
   WebServer.begin();
 }
 
- 
+
 
 
 void getWebPageTemplateDefault(const String& tmplName, String& tmpl)
@@ -552,7 +552,7 @@ String getErrorNotifications() {
 
 
 static byte navMenuIndex = 0;
- 
+
 void getWebPageTemplateVar(const String& varName )
 {
  // Serial.print(varName); Serial.print(" : free: "); Serial.print(ESP.getFreeHeap());   Serial.print("var len before:  "); Serial.print (varValue.length()) ;Serial.print("after:  ");
@@ -615,14 +615,14 @@ void getWebPageTemplateVar(const String& varName )
     //if (0) //TODO
     {
       TXBuffer = F("<link rel=\"stylesheet\" type=\"text/css\" href=\"esp.css\">");
-    } 
+    }
    else
     {
       TXBuffer += F("<style>");
       // TXBuffer += PGMT(pgDefaultCSS);
       for (unsigned int i = 0; i<  strlen(pgDefaultCSS); i++){   TXBuffer +=String((char)pgm_read_byte(&pgDefaultCSS[i]));      } // saves 1k of ram
       TXBuffer += F("</style>");
-    } 
+    }
   }
 
 
@@ -651,7 +651,7 @@ void getWebPageTemplateVar(const String& varName )
     addLog(LOG_LEVEL_ERROR, log);
     //no return string - eat var name
   }
-   
+
  }
 
 
@@ -662,7 +662,7 @@ void writeDefaultCSS(void)
   if (!SPIFFS.exists("esp.css"))
   {
     String defaultCSS;
- 
+
     fs::File f = SPIFFS.open("esp.css", "w");
     if (f)
     {
@@ -701,7 +701,7 @@ void addFooter(String& str)
 // Web Interface root page
 //********************************************************************************
 void handle_root() {
- 
+
   // if Wifi setup, launch setup wizard
   if (wifiSetup)
   {
@@ -711,8 +711,8 @@ void handle_root() {
    if (!isLoggedIn()) return;
    navMenuIndex = 0;
    TXBuffer.startStream();
-   sendHeadandTail(F("TmplStd"),_HEAD); 
-  
+   sendHeadandTail(F("TmplStd"),_HEAD);
+
   int freeMem = ESP.getFreeHeap();
   String sCommand = WebServer.arg(F("cmd"));
 
@@ -722,7 +722,7 @@ void handle_root() {
       timerAPoff = millis() + 2000L;  //user has reached the main page - AP can be switched off in 2..3 sec
 
 
-  
+
     printToWeb = true;
     printWebString = "";
     if (sCommand.length() > 0) {
@@ -841,10 +841,10 @@ void handle_root() {
     }
 
     TXBuffer += F("</table></form>");
-  
+
     printWebString = "";
     printToWeb = false;
-    sendHeadandTail(F("TmplStd"),_TAIL); 
+    sendHeadandTail(F("TmplStd"),_TAIL);
     TXBuffer.endStream();
 
   }
@@ -871,7 +871,7 @@ void handle_root() {
 
     TXBuffer+= "OK";
     TXBuffer.endStream();
-    
+
   }
 }
 
@@ -880,11 +880,11 @@ void handle_root() {
 // Web Interface config page
 //********************************************************************************
 void handle_config() {
-      
+
  if (!isLoggedIn()) return;
    navMenuIndex = 1;
    TXBuffer.startStream();
-   sendHeadandTail(F("TmplStd"),_HEAD); 
+   sendHeadandTail(F("TmplStd"),_HEAD);
 
   if (timerAPoff)
     timerAPoff = millis() + 2000L;  //user has reached the main page - AP can be switched off in 2..3 sec
@@ -909,7 +909,7 @@ void handle_config() {
   String unit = WebServer.arg(F("unit"));
   //String apkey = WebServer.arg(F("apkey"));
 
-  
+
   if (ssid[0] != 0)
   {
     if (strcmp(Settings.Name, name.c_str()) != 0) {
@@ -927,7 +927,7 @@ void handle_config() {
     copyFormPassword(F("key2"), SecuritySettings.WifiKey2, sizeof(SecuritySettings.WifiKey2));
     //strncpy(SecuritySettings.WifiAPKey, apkey.c_str(), sizeof(SecuritySettings.WifiAPKey));
     copyFormPassword(F("apkey"), SecuritySettings.WifiAPKey, sizeof(SecuritySettings.WifiAPKey));
-     
+
 
     // TD-er Read access control from form.
     SecuritySettings.IPblockLevel = getFormItemInt(F("ipblocklevel"));
@@ -950,7 +950,7 @@ void handle_config() {
         str2ip(iprangehigh, SecuritySettings.AllowedIPrangeHigh);
         break;
     }
- 
+
     Settings.Delay = sensordelay.toInt();
     Settings.deepSleep = (deepsleep == "on");
     Settings.deepSleepOnFail = (deepsleeponfail == "on");
@@ -1022,7 +1022,7 @@ void handle_config() {
   addSubmitButton(TXBuffer.buf );
   TXBuffer += F("</table></form>");
 
-  sendHeadandTail(F("TmplStd"),_TAIL); 
+  sendHeadandTail(F("TmplStd"),_TAIL);
   TXBuffer.endStream();
 }
 
@@ -1034,7 +1034,7 @@ void handle_controllers() {
   if (!isLoggedIn()) return;
   navMenuIndex = 2;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
   struct EventStruct TempEvent;
 
@@ -1053,7 +1053,7 @@ void handle_controllers() {
   String controllerpublish = WebServer.arg(F("controllerpublish"));
   String controllerenabled = WebServer.arg(F("controllerenabled"));
 
-   
+
 
   //submitted data
   if (protocol.length() != 0 && !controllerNotSet)
@@ -1219,16 +1219,16 @@ void handle_controllers() {
         if (!getControllerProtocolDisplayName(ProtocolIndex, CONTROLLER_USER, protoDisplayName)) {
           protoDisplayName = F("Controller User");
         }
-        addFormTextBox(reply, protoDisplayName, F("controlleruser"), SecuritySettings.ControllerUser[controllerindex], sizeof(SecuritySettings.ControllerUser[0])-1);
+        addFormTextBox(TXBuffer.buf, protoDisplayName, F("controlleruser"), SecuritySettings.ControllerUser[controllerindex], sizeof(SecuritySettings.ControllerUser[0])-1);
       }
       if (Protocol[ProtocolIndex].usesPassword)
       {
         String protoDisplayName;
         if (getControllerProtocolDisplayName(ProtocolIndex, CONTROLLER_PASS, protoDisplayName)) {
           // It is not a regular password, thus use normal text field.
-          addFormTextBox(reply, protoDisplayName, F("controllerpassword"), SecuritySettings.ControllerPassword[controllerindex], sizeof(SecuritySettings.ControllerPassword[0])-1);
+          addFormTextBox(TXBuffer.buf, protoDisplayName, F("controllerpassword"), SecuritySettings.ControllerPassword[controllerindex], sizeof(SecuritySettings.ControllerPassword[0])-1);
         } else {
-          addFormPasswordBox(reply, F("Controller Password"), F("controllerpassword"), SecuritySettings.ControllerPassword[controllerindex], sizeof(SecuritySettings.ControllerPassword[0])-1);
+          addFormPasswordBox(TXBuffer.buf, F("Controller Password"), F("controllerpassword"), SecuritySettings.ControllerPassword[controllerindex], sizeof(SecuritySettings.ControllerPassword[0])-1);
         }
       }
 
@@ -1238,7 +1238,7 @@ void handle_controllers() {
         if (!getControllerProtocolDisplayName(ProtocolIndex, CONTROLLER_SUBSCRIBE, protoDisplayName)) {
           protoDisplayName = F("Controller Subscribe");
         }
-        addFormTextBox(reply, protoDisplayName, F("controllersubscribe"), ControllerSettings.Subscribe, sizeof(ControllerSettings.Subscribe)-1);
+        addFormTextBox(TXBuffer.buf, protoDisplayName, F("controllersubscribe"), ControllerSettings.Subscribe, sizeof(ControllerSettings.Subscribe)-1);
       }
 
       if (Protocol[ProtocolIndex].usesTemplate || Protocol[ProtocolIndex].usesMQTT)
@@ -1247,7 +1247,7 @@ void handle_controllers() {
         if (!getControllerProtocolDisplayName(ProtocolIndex, CONTROLLER_PUBLISH, protoDisplayName)) {
           protoDisplayName = F("Controller Publish");
         }
-        addFormTextBox(reply, protoDisplayName, F("controllerpublish"), ControllerSettings.Publish, sizeof(ControllerSettings.Publish)-1);
+        addFormTextBox(TXBuffer.buf, protoDisplayName, F("controllerpublish"), ControllerSettings.Publish, sizeof(ControllerSettings.Publish)-1);
       }
 
       addFormCheckBox(TXBuffer.buf,  F("Enabled"), F("controllerenabled"), Settings.ControllerEnabled[controllerindex]);
@@ -1264,8 +1264,8 @@ void handle_controllers() {
     addSubmitButton (TXBuffer.buf);
     TXBuffer += F("</table></form>");
   }
- 
-    sendHeadandTail(F("TmplStd"),_TAIL); 
+
+    sendHeadandTail(F("TmplStd"),_TAIL);
     TXBuffer.endStream();
 }
 
@@ -1277,7 +1277,7 @@ void handle_notifications() {
   if (!isLoggedIn()) return;
   navMenuIndex = 6;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
   struct EventStruct TempEvent;
   // char tmpString[64];
@@ -1301,8 +1301,8 @@ void handle_notifications() {
   String pin2 = WebServer.arg(F("pin2"));
   String notificationenabled = WebServer.arg(F("notificationenabled"));
 
- 
-   
+
+
 
   if (notification.length() != 0 && !notificationindexNotSet)
   {
@@ -1482,11 +1482,11 @@ void handle_notifications() {
     addSubmitButton(TXBuffer.buf,  F("Test"), F("test"));
     TXBuffer += F("</table></form>");
   }
-    sendHeadandTail(F("TmplStd"),_TAIL); 
+    sendHeadandTail(F("TmplStd"),_TAIL);
     TXBuffer.endStream();
 }
 
- 
+
 
 
 
@@ -1505,11 +1505,11 @@ void handle_hardware() {
   if (!isLoggedIn()) return;
   navMenuIndex = 3;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
-  
-  
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
- 
+
+
+
   if (isFormItem(F("psda")))
   {
     Settings.Pin_status_led  = getFormItemInt(F("pled"));
@@ -1551,7 +1551,7 @@ void handle_hardware() {
 #ifdef FEATURE_SD
   addFormPinSelect( TXBuffer.buf,F("GPIO &rarr; SD Card CS"), "sd", Settings.Pin_sd_cs);
 #endif
- 
+
   addFormSubHeader(TXBuffer.buf, F("GPIO boot states"));
   addFormPinStateSelect(TXBuffer.buf, F("Pin mode 0 (D3)"), F("p0"), Settings.PinBootStates[0]);
   addFormPinStateSelect(TXBuffer.buf, F("Pin mode 2 (D4)"), F("p2"), Settings.PinBootStates[2]);
@@ -1565,13 +1565,13 @@ void handle_hardware() {
   addFormPinStateSelect(TXBuffer.buf, F("Pin mode 15 (D8)"), F("p15"), Settings.PinBootStates[15]);
   addFormPinStateSelect(TXBuffer.buf, F("Pin mode 16 (D0)"), F("p16"), Settings.PinBootStates[16]);
   addFormSeparator(TXBuffer.buf);
- 
+
   TXBuffer += F("<TR><TD><TD>");
   addSubmitButton(TXBuffer.buf);
   addHelpButton(TXBuffer.buf, F("ESPEasy#Hardware_page"));
   TXBuffer += F("<TR><TD></table></form>");
-  
-  sendHeadandTail(F("TmplStd"),_TAIL); 
+
+  sendHeadandTail(F("TmplStd"),_TAIL);
   TXBuffer.endStream();
 
 }
@@ -1621,7 +1621,7 @@ void handle_devices() {
   if (!isLoggedIn()) return;
   navMenuIndex = 4;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
 
   // char tmpString[41];
@@ -1701,8 +1701,8 @@ void handle_devices() {
       page = TASKS_MAX / 4;
   }
 
-  
-   
+
+
 
   byte taskIndex = WebServer.arg(F("index")).toInt();
   boolean taskIndexNotSet = taskIndex == 0;
@@ -2157,12 +2157,12 @@ void handle_devices() {
     TXBuffer += F("</table></form>");
   }
 
- 
+
   checkRAM(F("handle_devices"));
   String log = F("DEBUG: String size:");
   log += String(TXBuffer.sentBytes);
   addLog(LOG_LEVEL_DEBUG_DEV, log);
-  sendHeadandTail(F("TmplStd"),_TAIL); 
+  sendHeadandTail(F("TmplStd"),_TAIL);
   TXBuffer.endStream();
 }
 
@@ -2338,7 +2338,7 @@ void addPinSelect(boolean forI2C, String& str, String name,  int choice)
   optionValues[16] = 15;
   optionValues[17] = 16;
   renderHTMLForPinSelect(options, optionValues, forI2C, str, name, choice, 18);
-  
+
 }
 
 #else
@@ -2600,7 +2600,7 @@ void addFormHeader(String& str, const String& header)
   str += header;
   str += F("</h2>");
   TXBuffer.checkFull();
- 
+
 }
 
 
@@ -2887,11 +2887,11 @@ void handle_log() {
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
 
- 
-   
+
+
   TXBuffer += F("<script>function RefreshMe(){window.location = window.location}setTimeout('RefreshMe()', 3000);</script>");
   TXBuffer += F("<table><TR><TH>Log<TR><TD>");
   for (int i = 0; i< LOG_STRUCT_MESSAGE_LINES; i++){
@@ -2900,7 +2900,7 @@ void handle_log() {
   }
   //Logging.getAll( TXBuffer.buf, F("<BR>"));
   TXBuffer += F("</table>");
-  sendHeadandTail(F("TmplStd"),_TAIL); 
+  sendHeadandTail(F("TmplStd"),_TAIL);
   TXBuffer.endStream();
 }
 
@@ -2912,11 +2912,11 @@ void handle_tools() {
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
 
   String webrequest = WebServer.arg(F("cmd"));
- 
+
   TXBuffer += F("<form>");
   TXBuffer += F("<table>");
 
@@ -3047,7 +3047,7 @@ void handle_tools() {
 #endif
 
   TXBuffer += F("</table></form>");
-  sendHeadandTail(F("TmplStd"),_TAIL); 
+  sendHeadandTail(F("TmplStd"),_TAIL);
   TXBuffer.endStream();
   printWebString = "";
   printToWeb = false;
@@ -3061,12 +3061,12 @@ void handle_pinstates() {
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
 
 
- 
-   
+
+
   //addFormSubHeader(  F("Pin state table<TR>"));
 
   TXBuffer += F("<table border=1px frame='box' rules='all'><TH>Plugin");
@@ -3112,7 +3112,7 @@ void handle_pinstates() {
     }
 
   TXBuffer += F("</table>");
-    sendHeadandTail(F("TmplStd"),_TAIL); 
+    sendHeadandTail(F("TmplStd"),_TAIL);
     TXBuffer.endStream();
 }
 
@@ -3124,12 +3124,12 @@ void handle_i2cscanner() {
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
   char *TempString = (char*)malloc(80);
 
- 
-   
+
+
   TXBuffer += F("<table border=1px frame='box' rules='all'><TH>I2C Addresses in use<TH>Supported devices");
 
   byte error, address;
@@ -3253,7 +3253,7 @@ void handle_i2cscanner() {
     TXBuffer += F("<TR>No I2C devices found");
 
   TXBuffer += F("</table>");
-  sendHeadandTail(F("TmplStd"),_TAIL); 
+  sendHeadandTail(F("TmplStd"),_TAIL);
   TXBuffer.endStream();
   free(TempString);
 }
@@ -3266,12 +3266,12 @@ void handle_wifiscanner() {
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
    char *TempString = (char*)malloc(80);
 
- 
-   
+
+
   TXBuffer += F("<table><TR><TH>Access Points:<TH>RSSI");
 
   int n = WiFi.scanNetworks();
@@ -3290,7 +3290,7 @@ void handle_wifiscanner() {
 
 
   TXBuffer += F("</table>");
-  sendHeadandTail(F("TmplStd"),_TAIL); 
+  sendHeadandTail(F("TmplStd"),_TAIL);
   TXBuffer.endStream();
   free(TempString);
 }
@@ -3302,14 +3302,14 @@ void handle_wifiscanner() {
 void handle_login() {
   if (!clientIPallowed()) return;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd"),_HEAD); 
+  sendHeadandTail(F("TmplStd"),_HEAD);
 
   String webrequest = WebServer.arg(F("password"));
   char command[80];
   command[0] = 0;
   webrequest.toCharArray(command, 80);
 
- 
+
   TXBuffer += F("<form method='post'>");
   TXBuffer += F("<table><TR><TD>Password<TD>");
   TXBuffer += F("<input type='password' name='password' value='");
@@ -3334,7 +3334,7 @@ void handle_login() {
     }
   }
 
-  sendHeadandTail(F("TmplStd"),_TAIL); 
+  sendHeadandTail(F("TmplStd"),_TAIL);
   TXBuffer.endStream();
   printWebString = "";
   printToWeb = false;
@@ -3347,7 +3347,7 @@ void handle_login() {
 void handle_control() {
   if (!clientIPallowed()) return;
   //TXBuffer.startStream(true); // true= json
- // sendHeadandTail(F("TmplStd"),_HEAD); 
+ // sendHeadandTail(F("TmplStd"),_HEAD);
 
   String webrequest = WebServer.arg(F("cmd"));
 
@@ -3366,7 +3366,7 @@ void handle_control() {
 
   printToWeb = true;
   printWebString = "";
- 
+
 
   if (PluginCall(PLUGIN_WRITE, &TempEvent, webrequest));
   else if (remoteConfig(&TempEvent, webrequest));
@@ -3396,22 +3396,20 @@ void handle_json()
   // ToDo TD-er: Must check for allowed client IP??????
   String tasknr = WebServer.arg(F("tasknr"));
   TXBuffer.startStream( true);  // true = WebServer.send(200, "application/json");
- // sendHeadandTail(F("TmplStd"),_HEAD); 
+ // sendHeadandTail(F("TmplStd"),_HEAD);
 
 
   if (tasknr.length() == 0)
   {
-    reply += F("{\"System\":{\n");
-
-	reply += F("\"Name\":");		reply += F("\"");	reply += Settings.Name;					reply += F("\"");	reply += F(",");
-	reply += F("\"Unit\":");							reply += Settings.Unit;										reply += F(",");
-	reply += F("\"Build\":");							reply += BUILD;												reply += F(",");
-	reply += F("\"Git Build\":");	reply += F("\"");	reply += BUILD_GIT;						reply += F("\"");	reply += F(",");
-	reply += F("\"Local time\":");	reply += F("\"");	reply += getDateTimeString('-',':',' ');reply += F("\"");	reply += F(",");
-	reply += F("\"Uptime\":");							reply += wdcounter / 2;										reply += F(",");
-    reply += F("\"Free RAM\":");						reply += ESP.getFreeHeap();									//end of array
-
-    reply += F("},\n");
+    TXBuffer += F("{\"System\":{\n");
+      TXBuffer += F("\"Name\":");       TXBuffer += F("\"");TXBuffer += Settings.Name;                 TXBuffer += F("\""); TXBuffer += F(",");
+      TXBuffer += F("\"Unit\":");                           TXBuffer += Settings.Unit;                                      TXBuffer += F(",");
+      TXBuffer += F("\"Build\":");                          TXBuffer += BUILD;                                              TXBuffer += F(",");
+      TXBuffer += F("\"Git Build\":");  TXBuffer += F("\"");TXBuffer += BUILD_GIT;                     TXBuffer += F("\""); TXBuffer += F(",");
+      TXBuffer += F("\"Local time\":"); TXBuffer += F("\"");TXBuffer += getDateTimeString('-',':',' ');TXBuffer += F("\""); TXBuffer += F(",");
+      TXBuffer += F("\"Uptime\":");                         TXBuffer += wdcounter / 2;                                      TXBuffer += F(",");
+      TXBuffer += F("\"Free RAM\":");                       TXBuffer += ESP.getFreeHeap();                                  //end of array
+    TXBuffer += F("},\n");
   }
 
   byte taskNr = tasknr.toInt();
@@ -3464,9 +3462,9 @@ void handle_json()
   }
   if (taskNr == 0 )
     TXBuffer += F("]}\n");
-  
+
   TXBuffer.endStream();
- 
+
 }
 
 
@@ -3477,7 +3475,7 @@ void handle_advanced() {
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd")); 
+  sendHeadandTail(F("TmplStd"));
 
   char tmpString[81];
 
@@ -3512,8 +3510,8 @@ void handle_advanced() {
   String cft = WebServer.arg(F("cft"));
   String MQTTRetainFlag = WebServer.arg(F("mqttretainflag"));
   String ArduinoOTAEnable = WebServer.arg(F("arduinootaenable"));
- 
-   
+
+
 
   if (edit.length() != 0)
   {
@@ -3625,7 +3623,7 @@ void handle_advanced() {
   addSubmitButton (TXBuffer.buf);
   TXBuffer += F("<input type='hidden' name='edit' value='1'>");
   TXBuffer += F("</table></form>");
-    sendHeadandTail(F("TmplStd"),true); 
+    sendHeadandTail(F("TmplStd"),true);
     TXBuffer.endStream();
 }
 
@@ -3704,7 +3702,7 @@ void handle_download()
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
 //  TXBuffer.startStream();
-//  sendHeadandTail(F("TmplStd")); 
+//  sendHeadandTail(F("TmplStd"));
 
 
   fs::File dataFile = SPIFFS.open(F(FILE_CONFIG), "r");
@@ -3737,10 +3735,10 @@ void handle_upload() {
   if (!isLoggedIn()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd")); 
+  sendHeadandTail(F("TmplStd"));
 
   TXBuffer += F("<form enctype=\"multipart/form-data\" method=\"post\"><p>Upload settings file:<br><input type=\"file\" name=\"datafile\" size=\"40\"></p><div><input class='button link' type='submit' value='Upload'></div><input type='hidden' name='edit' value='1'></form>");
-     sendHeadandTail(F("TmplStd"),true); 
+     sendHeadandTail(F("TmplStd"),true);
     TXBuffer.endStream();
   printWebString = "";
   printToWeb = false;
@@ -3755,9 +3753,9 @@ void handle_upload_post() {
 
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd")); 
+  sendHeadandTail(F("TmplStd"));
 
- 
+
 
   if (uploadResult == 1)
   {
@@ -3771,9 +3769,9 @@ void handle_upload_post() {
   if (uploadResult == 3)
     TXBuffer += F("<font color=\"red\">No filename!</font>");
 
-   
+
   TXBuffer += F("Upload finished");
-  sendHeadandTail(F("TmplStd"),true); 
+  sendHeadandTail(F("TmplStd"),true);
   TXBuffer.endStream();
   printWebString = "";
   printToWeb = false;
@@ -4063,7 +4061,7 @@ void handle_filelist() {
   if (!clientIPallowed()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd")); 
+  sendHeadandTail(F("TmplStd"));
 
 #if defined(ESP8266)
 
@@ -4075,8 +4073,8 @@ void handle_filelist() {
     // flashCount();
   }
 
- 
-   
+
+
   TXBuffer += F("<table border=1px frame='box' rules='all'><TH><TH>Filename:<TH>Size");
 
   fs::Dir dir = SPIFFS.openDir("");
@@ -4101,7 +4099,7 @@ void handle_filelist() {
   }
   TXBuffer += F("</table></form>");
   TXBuffer += F("<BR><a class='button link' href=\"/upload\">Upload</a>");
-    sendHeadandTail(F("TmplStd"),true); 
+    sendHeadandTail(F("TmplStd"),true);
     TXBuffer.endStream();
 #endif
 #if defined(ESP32)
@@ -4113,8 +4111,8 @@ void handle_filelist() {
     // flashCount();
   }
 
- 
-   
+
+
   TXBuffer += F("<table border=1px frame='box' rules='all'><TH><TH>Filename:<TH>Size");
 
   File root = SPIFFS.open("/");
@@ -4142,7 +4140,7 @@ void handle_filelist() {
   }
   TXBuffer += F("</table></form>");
   TXBuffer += F("<BR><a class='button link' href=\"/upload\">Upload</a>");
-    sendHeadandTail(F("TmplStd"),true); 
+    sendHeadandTail(F("TmplStd"),true);
     TXBuffer.endStream();
 #endif
 }
@@ -4156,7 +4154,7 @@ void handle_SDfilelist() {
   if (!clientIPallowed()) return;
   navMenuIndex = 7;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd")); 
+  sendHeadandTail(F("TmplStd"));
 
 
   String fdelete = "";
@@ -4216,8 +4214,8 @@ void handle_SDfilelist() {
     parent_dir.remove(parent_dir.lastIndexOf("/", parent_dir.lastIndexOf("/") - 1) + 1);
   }
 
- 
-   
+
+
   String subheader = "SD Card: " + current_dir;
   addFormSubHeader(  subheader);
   TXBuffer += F("<BR>");
@@ -4288,7 +4286,7 @@ void handle_SDfilelist() {
   root.close();
   TXBuffer += F("</table></form>");
   //TXBuffer += F("<BR><a class='button link' href=\"/upload\">Upload</a>");
-     sendHeadandTail(F("TmplStd"),true); 
+     sendHeadandTail(F("TmplStd"),true);
     TXBuffer.endStream();
 }
 #endif
@@ -4328,8 +4326,8 @@ void handleNotFound() {
 void handle_setup() {
   // Do not check client IP range allowed.
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplAP")); 
- 
+  sendHeadandTail(F("TmplAP"));
+
   addHeader(false,TXBuffer.buf);
 
   if (WiFi.status() == WL_CONNECTED)
@@ -4344,8 +4342,8 @@ void handle_setup() {
     TXBuffer += F("<a class='button' href='http://");
     TXBuffer +=  host;
     TXBuffer += F("/config'>Proceed to main config</a>");
-    
-    sendHeadandTail(F("TmplAP"),true); 
+
+    sendHeadandTail(F("TmplAP"),true);
     TXBuffer.endStream();
 
     wifiSetup = false;
@@ -4449,7 +4447,7 @@ void handle_setup() {
   }
 
   TXBuffer += F("</form>");
-   sendHeadandTail(F("TmplAP"),true); 
+   sendHeadandTail(F("TmplAP"),true);
   TXBuffer.endStream();
   delay(10);
 }
@@ -4462,7 +4460,7 @@ void handle_rules() {
   if (!isLoggedIn()) return;
   navMenuIndex = 5;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd")); 
+  sendHeadandTail(F("TmplStd"));
   static byte currentSet = 1;
 
 
@@ -4482,10 +4480,10 @@ void handle_rules() {
   fileName += rulesSet;
   fileName += F(".txt");
 
- 
+
   checkRAM(F("handle_rules"));
 
-   
+
 
   if (WebServer.args() > 0)
   {
@@ -4578,7 +4576,7 @@ void handle_rules() {
    TXBuffer += F("<TR><TD>");
   addSubmitButton( TXBuffer.buf);
    TXBuffer += F("</table></form>");
-  sendHeadandTail(F("TmplStd"),true); 
+  sendHeadandTail(F("TmplStd"),true);
   TXBuffer.endStream();
 
 }
@@ -4590,10 +4588,10 @@ void handle_rules() {
 void handle_sysinfo() {
   if (!isLoggedIn()) return;
   TXBuffer.startStream();
-  sendHeadandTail(F("TmplStd")); 
+  sendHeadandTail(F("TmplStd"));
 
   int freeMem = ESP.getFreeHeap();
- 
+
   addHeader(true,  TXBuffer.buf);
    TXBuffer += printWebString;
    TXBuffer += F("<form>");
@@ -4708,7 +4706,7 @@ void handle_sysinfo() {
   TXBuffer += F(" , ");
   TXBuffer += Serial.available();
   TXBuffer += F(")");
- 
+
   TXBuffer += F("<TR><TD>STA MAC<TD>");
   uint8_t mac[] = {0, 0, 0, 0, 0, 0};
   uint8_t* macread = WiFi.macAddress(mac);
@@ -4753,17 +4751,17 @@ void handle_sysinfo() {
 
    TXBuffer += F("<TR><TD>Build Md5<TD>");
   for (byte i = 0; i<16; i++)    TXBuffer += String(CRCValues.compileTimeMD5[i],HEX);
- 
+
    TXBuffer += F("<TR><TD>Md5 check<TD>");
-  if (! CRCValues.checkPassed()) 
+  if (! CRCValues.checkPassed())
      TXBuffer +="<font color = 'red'>fail !</font>";
   else  TXBuffer +="passed.";
-  
+
    TXBuffer += F("<TR><TD>Build time<TD>");
    TXBuffer += String(CRCValues.compileDate);
    TXBuffer += " ";
    TXBuffer += String(CRCValues.compileTime);
- 
+
    TXBuffer += F("<TR><TD colspan=2><H3>ESP board</H3></TD></TR>");
 
    TXBuffer += F("<TR><TD>ESP Chip ID<TD>");
@@ -4847,7 +4845,7 @@ void handle_sysinfo() {
   #endif
 
    TXBuffer += F("</table></form>");
-   sendHeadandTail(F("TmplStd"),true); 
+   sendHeadandTail(F("TmplStd"),true);
   TXBuffer.endStream();
 }
 
