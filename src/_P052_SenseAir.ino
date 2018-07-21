@@ -184,13 +184,13 @@ boolean Plugin_052(byte function, struct EventStruct *event, String& string)
       {
           byte choice = Settings.TaskDevicePluginConfig[event->TaskIndex][0];
           String options[7] = { F("Error Status"), F("Carbon Dioxide"), F("Temperature"), F("Humidity"), F("Relay Status"), F("Temperature Adjustment"), F("CO2 read from RAM") };
-          addFormSelector(string, F("Sensor"), F("plugin_052"), 7, options, NULL, choice);
+          addFormSelector(F("Sensor"), F("plugin_052"), 7, options, NULL, choice);
           String detectedString;
           if (detected_device_description.length() > 0) {
             detectedString += detected_device_description;
             detectedString += F("detected");
           }
-          addFormNote(string, detectedString);
+          addFormNote(detectedString);
           success = true;
           break;
       }
@@ -500,6 +500,7 @@ bool Plugin_052_check_error_status() {
     }
   }
   addLog(LOG_LEVEL_INFO, log);
+  return false;
 }
 
 void Plugin_052_logModbusException(byte value) {
@@ -510,7 +511,7 @@ void Plugin_052_logModbusException(byte value) {
     case MODBUS_EXCEPTION_ILLEGAL_FUNCTION: {
           // The function code received in the query is not an allowable action for the slave.
           // If a Poll Program Complete command was issued, this code indicates that no program function preceded it.
-          log += F("Illegal Function");
+          log += F("Illegal Function (not allowed by client)");
           break;
         }
     case MODBUS_EXCEPTION_ILLEGAL_DATA_ADDRESS: {
@@ -558,7 +559,7 @@ void Plugin_052_logModbusException(byte value) {
   log += Plugin_052_log_buffer(_plugin_052_sendframe, _plugin_052_sendframe_used);
   log += F(" - received: ");
   log += Plugin_052_log_buffer(_plugin_052_recv_buf, _plugin_052_recv_buf_used);
-  addLog(LOG_LEVEL_INFO, log);
+  addLog(LOG_LEVEL_DEBUG_MORE, log);
 }
 
 byte Plugin_052_processCommand()
@@ -758,7 +759,7 @@ bool Plugin_052_measurement_active() {
 bool Plugin_052_prepare_single_measurement_from_RAM()
 {
   Plugin_052_check_error_status();
-  if (millis() < (_plugin_052_last_measurement + P052_MEASUREMENT_INTERVAL)) {
+  if (timeOutReached(_plugin_052_last_measurement + P052_MEASUREMENT_INTERVAL)) {
     // Last measurement taken is still valid.
     return true;
   }
